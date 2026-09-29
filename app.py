@@ -5,11 +5,14 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from src.catalog import EXERCISE_PATTERNS
 from src.data_source import append_sesion, load_gym_schedule, load_historial_fuente, load_historial_registro
 from src.engine import build_proposal
 from src.models import SessionProposal, SlotProposal
 from src.schedule_parser import categorias_de_hoy
 from src.ui import inject_loading_overlay
+
+EJERCICIOS_CONOCIDOS = sorted(EXERCISE_PATTERNS.keys())
 
 st.set_page_config(page_title="Control Fuerza - Juan", page_icon="🏋️", layout="centered")
 
@@ -142,6 +145,10 @@ def main() -> None:
                 if eb and eb.nombre and "ejercicio_b" not in cambios:
                     st.caption(f"**B ({ROL_LABEL.get(eb.rol, eb.rol) or 'sin clasificar'}):** {eb.banner}")
 
+        opciones_ejercicio = sorted(
+            set(EJERCICIOS_CONOCIDOS) | set(baseline_df["ejercicio_a"]) | set(baseline_df["ejercicio_b"]) | {""}
+        )
+
         st.markdown("**Ajustá lo que necesites antes de registrar la sesión:**")
         edited = st.data_editor(
             baseline_df,
@@ -149,10 +156,10 @@ def main() -> None:
             use_container_width=True,
             column_config={
                 "slot": st.column_config.NumberColumn("N°", disabled=True, width="small"),
-                "ejercicio_a": st.column_config.TextColumn("Ejercicio A"),
+                "ejercicio_a": st.column_config.SelectboxColumn("Ejercicio A", options=opciones_ejercicio),
                 "carga_a": st.column_config.TextColumn("Carga A"),
                 "reps_a": st.column_config.TextColumn("Reps A"),
-                "ejercicio_b": st.column_config.TextColumn("Ejercicio B"),
+                "ejercicio_b": st.column_config.SelectboxColumn("Ejercicio B", options=opciones_ejercicio),
                 "carga_b": st.column_config.TextColumn("Carga B"),
                 "reps_b": st.column_config.TextColumn("Reps B"),
                 "series": st.column_config.TextColumn("Series"),
