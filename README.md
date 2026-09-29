@@ -64,22 +64,25 @@ loguearse con ninguna cuenta.
 
 ### 2. Compartir los Google Sheets con la cuenta de servicio
 
-- Abrí **PLANIFICACION FUERZA** y **PLANIFICACION DE FUERZA 26-27** →
-  Compartir → pegá el email de la cuenta de servicio → permiso **Lector**.
-- Creá un Google Sheet nuevo y vacío bajo `nicolassanalitro@institutovelez.edu.ar`
-  (verificá la cuenta activa antes de crearlo), por ejemplo
-  "Control Fuerza Juan - Registro". Compartilo con el email de la cuenta de
-  servicio con permiso **Editor**. Copiá su ID (la parte de la URL entre
-  `/d/` y `/edit`) — la app crea sola la hoja `registro_sesiones` adentro la
-  primera vez que Juan confirma una sesión.
+- Abrí **PLANIFICACION FUERZA** (temporada 25-26, ya cerrada) → Compartir →
+  pegá el email de la cuenta de servicio → permiso **Lector** (solo hace
+  falta leerla).
+- Abrí **PLANIFICACION DE FUERZA 26-27** (temporada actual) → Compartir →
+  pegá el email de la cuenta de servicio → permiso **Editor**. La app va a
+  leer las pestañas "MICRO N" igual que la anterior, y además va a crear ahí
+  su propia pestaña nueva `registro_sesiones` la primera vez que Juan
+  confirme una sesión — nunca toca las pestañas "MICRO N" que se llenan a
+  mano.
+
+No hace falta crear ningún Google Sheet nuevo: todo queda dentro de la
+planilla de la temporada actual.
 
 ### 3. Cargar los secretos
 
 Copiá `.streamlit/secrets.toml.example` a `.streamlit/secrets.toml` y
-completá:
-- `[sheets] registro_id` con el ID del Sheet que creaste en el paso 2.
-- `[gcp_service_account]` con todos los campos del archivo `.json` descargado
-  en el paso 1 (es un copy-paste directo, campo por campo).
+completá `[gcp_service_account]` con todos los campos del archivo `.json`
+descargado en el paso 1 (es un copy-paste directo, campo por campo). Los IDs
+de `[sheets]` ya vienen cargados correctamente, no hace falta tocarlos.
 
 En Streamlit Community Cloud, este mismo contenido va en
 **App → Settings → Secrets** (no se sube el archivo, se pega el texto).
