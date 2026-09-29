@@ -1,18 +1,26 @@
 """Motor de propuesta de sesion (reglas explicitas, sin LLM).
 
-Por defecto, cada ejercicio se propone IGUAL al que se uso la ultima vez
-para esa categoria/ejercicio/lado (A o B) -- ya no rota automaticamente para
-dar variedad, porque eso rompia el seguimiento semana a semana que describe
-esta funcion. La variedad la decide Juan a mano, editando el ejercicio en la
-tabla; en cuanto lo hace, esa continuidad se corta (se trata como "primera
-vez" la proxima vez).
+Por defecto, cada ejercicio se propone IGUAL al que se uso la ultima vez en
+ese lugar de la sesion (slot + A o B) -- ya no rota automaticamente para dar
+variedad, porque eso rompia el seguimiento semana a semana que describe esta
+funcion. La variedad la decide Juan a mano, editando el ejercicio en la
+tabla.
 
-Esquema de progresion (por cada ejercicio individual, troncal o auxiliar,
-de forma independiente entre si):
-- Se compara contra la ULTIMA sesion registrada para esa categoria+ejercicio.
-- Si el dia de la semana de hoy no coincide con el de esa ultima sesion (la
-  categoria cambio de dia), se trata como rutina nueva: mismo ejercicio y
-  carga que la ultima vez, sin ajuste, con aviso de "primera vez".
+El seguimiento de progresion es por IDENTIDAD del ejercicio (nombre), no por
+la posicion donde aparece: si Juan cambia "SENTADILLA TRASERA" por
+"SENTADILLA UNIPODAL", la app busca el historial propio de "SENTADILLA
+UNIPODAL" para esa categoria (en cualquier slot donde haya aparecido antes),
+no arrastra la carga/semana del ejercicio que reemplazo. Si nunca se hizo,
+no hay carga de referencia -- no se inventa un punto de partida.
+
+Esquema de progresion (por cada ejercicio, troncal o auxiliar, de forma
+independiente entre si):
+- Se compara contra la ULTIMA vez que se registro ESE ejercicio para esa
+  categoria (en cualquier slot).
+- Si nunca se registro antes, o si el dia de la semana de hoy no coincide
+  con el de esa ultima vez, se trata como rutina nueva: mismo dato que la
+  ultima vez (o sin carga si nunca se hizo), sin ajuste, con aviso de
+  "primera vez" que incluye cuando fue la ultima vez (si la hubo).
 - Si el dia coincide, se cuenta cuantas veces seguidas (mismo dia de semana,
   mismo ejercicio) se viene sosteniendo, para saber la "semana" del ciclo:
     * semana par (2, 4, 6...): +2 reps si es troncal, +1 si es auxiliar,
@@ -58,6 +66,13 @@ def _sort_key(slot: SetSlot):
 
 _CARGA_KG_RE = re.compile(r"^(\d+(?:[.,]\d+)?)\s*kg$", re.IGNORECASE)
 
+# Cuanto margen se tolera entre dos apariciones del mismo ejercicio (mismo
+# dia de semana) para contarlas como semanas consecutivas de la misma racha.
+# Un poco mas de 7 dias para tolerar que la categoria se corra un dia o dos
+# de una semana a la otra; si el hueco es mayor, no es "la semana pasada",
+# es un ejercicio retomado despues de un tiempo -> se trata como primera vez.
+MAX_DIAS_CONTINUIDAD = 10
+
 
 def suggest_carga(ultima_carga: str) -> str:
     """+5% sobre la ultima carga, redondeado a 2.5kg, solo si es un peso
@@ -81,53 +96,77 @@ def _parse_reps(reps: str | None) -> int | None:
     return int(reps) if reps.isdigit() else None
 
 
-def _compute_exercise_progression(
-    registros_slot: list[SetSlot],
-    posicion: str,
-    hoy: date_cls,
-) -> ExerciseProposal | None:
+def _ultimo_ejercicio_de_slot(registros_slot: list[SetSlot], posicion: str) -> str | None:
+    """Que ejercicio ocupaba este slot+posicion la ultima vez -- solo para
+    decidir que proponer HOY por defecto. La progresion en si se calcula
+    aparte, siguiendo al ejercicio (ver compute_progression_for_exercise)."""
+
     def nombre_de(s: SetSlot) -> str | None:
         return s.ejercicio_a if posicion == "A" else s.ejercicio_b
 
-    def carga_de(s: SetSlot) -> str | None:
-        return s.carga_a if posicion == "A" else s.carga_b
-
-    def reps_de(s: SetSlot) -> str | None:
-        return s.reps_a if posicion == "A" else s.reps_b
-
     registros = sorted((s for s in registros_slot if nombre_de(s)), key=_sort_key, reverse=True)
-    if not registros:
+    return nombre_de(registros[0]) if registros else None
+
+
+def compute_progression_for_exercise(
+    historial_categoria: list[SetSlot],
+    nombre: str | None,
+    hoy: date_cls,
+    posicion: str = "",
+) -> ExerciseProposal | None:
+    """Progresion de UN ejercicio para esta categoria, buscando su historial
+    en cualquier slot/posicion donde haya aparecido (no solo donde esta hoy).
+    `historial_categoria` ya tiene que venir filtrado a la categoria."""
+    nombre = (nombre or "").strip()
+    if not nombre:
         return None
 
-    ultimo = registros[0]
-    ultimo_fecha = parse_fecha(ultimo.fecha)
-    nombre = nombre_de(ultimo) or ""
     rol = classify_troncal_auxiliar(nombre) or ""
-    ultima_carga = carga_de(ultimo) or "-"
-    ultimas_reps = reps_de(ultimo) or ""
+    nombre_norm = normalize_name(nombre)
 
-    dia_coincide = ultimo_fecha is not None and ultimo_fecha.weekday() == hoy.weekday()
+    instancias: list[tuple[SetSlot, str, str]] = []
+    for s in historial_categoria:
+        if s.ejercicio_a and normalize_name(s.ejercicio_a) == nombre_norm:
+            instancias.append((s, s.carga_a or "-", s.reps_a or ""))
+        if s.ejercicio_b and normalize_name(s.ejercicio_b) == nombre_norm:
+            instancias.append((s, s.carga_b or "-", s.reps_b or ""))
+
+    if not instancias:
+        return ExerciseProposal(
+            posicion=posicion, nombre=nombre, rol=rol, carga="-", reps="", week_index=1,
+            tipo_ajuste=PRIMERA_VEZ, reps_anterior="", carga_anterior="", ultima_vez="",
+        )
+
+    instancias.sort(key=lambda t: _sort_key(t[0]), reverse=True)
+    ultimo_registro, ultima_carga, ultimas_reps = instancias[0]
+    ultima_fecha = parse_fecha(ultimo_registro.fecha)
+    ultima_vez = ultimo_registro.fecha
+
+    dia_coincide = (
+        ultima_fecha is not None
+        and ultima_fecha.weekday() == hoy.weekday()
+        and 0 <= (hoy - ultima_fecha).days <= MAX_DIAS_CONTINUIDAD
+    )
 
     if not dia_coincide:
         return ExerciseProposal(
-            posicion=posicion,
-            nombre=nombre,
-            rol=rol,
-            carga=ultima_carga,
-            reps=ultimas_reps,
-            week_index=1,
-            tipo_ajuste=PRIMERA_VEZ,
-            reps_anterior=ultimas_reps,
-            carga_anterior=ultima_carga,
+            posicion=posicion, nombre=nombre, rol=rol, carga=ultima_carga, reps=ultimas_reps, week_index=1,
+            tipo_ajuste=PRIMERA_VEZ, reps_anterior=ultimas_reps, carga_anterior=ultima_carga, ultima_vez=ultima_vez,
         )
 
     streak = 1
     baseline_reps = ultimas_reps
-    for rec in registros[1:]:
-        rec_fecha = parse_fecha(rec.fecha)
-        if nombre_de(rec) == nombre and rec_fecha is not None and rec_fecha.weekday() == hoy.weekday():
+    fecha_referencia = ultima_fecha
+    for reg, _carga, reps in instancias[1:]:
+        fecha = parse_fecha(reg.fecha)
+        if (
+            fecha is not None
+            and fecha.weekday() == hoy.weekday()
+            and 0 <= (fecha_referencia - fecha).days <= MAX_DIAS_CONTINUIDAD
+        ):
             streak += 1
-            baseline_reps = reps_de(rec) or baseline_reps
+            baseline_reps = reps or baseline_reps
+            fecha_referencia = fecha
         else:
             break
 
@@ -139,13 +178,13 @@ def _compute_exercise_progression(
         nueva_reps = str(reps_num + delta) if reps_num is not None else ultimas_reps
         return ExerciseProposal(
             posicion, nombre, rol, ultima_carga, nueva_reps, week_index,
-            SUBE_REPS, reps_anterior=ultimas_reps, carga_anterior=ultima_carga,
+            SUBE_REPS, reps_anterior=ultimas_reps, carga_anterior=ultima_carga, ultima_vez=ultima_vez,
         )
 
     nueva_carga = suggest_carga(ultima_carga)
     return ExerciseProposal(
         posicion, nombre, rol, nueva_carga, baseline_reps, week_index,
-        RESET_REPS_SUBE_KG, reps_anterior=ultimas_reps, carga_anterior=ultima_carga,
+        RESET_REPS_SUBE_KG, reps_anterior=ultimas_reps, carga_anterior=ultima_carga, ultima_vez=ultima_vez,
     )
 
 
@@ -185,8 +224,10 @@ def build_proposal(historial: list[SetSlot], categoria: str, hoy: date_cls | Non
             advertencias.append(f"Sin historial para el ejercicio {slot_num}; agregalo manualmente.")
             continue
 
-        ex_a = _compute_exercise_progression(registros_slot, "A", hoy)
-        ex_b = _compute_exercise_progression(registros_slot, "B", hoy)
+        nombre_a = _ultimo_ejercicio_de_slot(registros_slot, "A")
+        nombre_b = _ultimo_ejercicio_de_slot(registros_slot, "B")
+        ex_a = compute_progression_for_exercise(registros_ordenados, nombre_a, hoy, posicion="A")
+        ex_b = compute_progression_for_exercise(registros_ordenados, nombre_b, hoy, posicion="B")
         series = next((s.series for s in registros_slot if s.series), "")
 
         slots_out.append(SlotProposal(slot=slot_num, ejercicio_a=ex_a, ejercicio_b=ex_b, series=series))

@@ -5,9 +5,9 @@ from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 
-from src.catalog import EXERCISE_PATTERNS
+from src.catalog import EXERCISE_PATTERNS, normalize_name
 from src.data_source import append_sesion, load_gym_schedule, load_historial_fuente, load_historial_registro, load_partidos_fcf
-from src.engine import build_proposal
+from src.engine import build_proposal, compute_progression_for_exercise
 from src.fcf import proximo_partido
 from src.fcf_config import fcf_ids_de
 from src.models import PRIMERA_VEZ, SUBE_REPS, ExerciseProposal, SessionProposal, SlotProposal
@@ -62,7 +62,9 @@ def exercise_label(nombre: str, rol: str) -> str:
 
 def render_banner_compacto(e: ExerciseProposal) -> str:
     if e.tipo_ajuste == PRIMERA_VEZ:
-        return f"primera vez · {e.reps} reps · {e.carga}"
+        if not e.ultima_vez:
+            return "nunca registrado antes para esta categoría · sin carga de referencia"
+        return f"última vez {e.ultima_vez} · {e.reps} reps · {e.carga} — día distinto, sin ajuste automático"
 
     flecha_reps = "⬆️" if e.tipo_ajuste == SUBE_REPS else "⬇️"
     if e.carga_anterior and e.carga != e.carga_anterior:
@@ -163,17 +165,34 @@ def main() -> None:
 
         baseline_df = proposal_to_dataframe(proposal)
         edited_cells = get_edited_cells("editor")
+        cat_norm = normalize_name(categoria)
+        historial_categoria = [h for h in historial if normalize_name(h.categoria) == cat_norm]
+
+        # Si Juan cambio el ejercicio de una fila, recalculamos SU propia
+        # progresion (no la del ejercicio que reemplazo): el cartel de abajo
+        # pasa a reflejar el historial real de ese ejercicio nuevo (o "nunca
+        # registrado antes" si no tiene). Streamlit no permite reescribir la
+        # carga/reps ya tipeadas en la tabla desde acá -- Juan las ajusta a
+        # mano siguiendo lo que diga el cartel.
+        mostrar: dict[int, dict[str, ExerciseProposal | None]] = {}
+        for row_idx, s in enumerate(proposal.slots):
+            cambios = edited_cells.get(row_idx, {})
+            fila: dict[str, ExerciseProposal | None] = {"A": s.ejercicio_a, "B": s.ejercicio_b}
+            for pos, col_ej in (("A", "ejercicio_a"), ("B", "ejercicio_b")):
+                nuevo_nombre = cambios.get(col_ej)
+                if nuevo_nombre:
+                    fila[pos] = compute_progression_for_exercise(historial_categoria, nuevo_nombre, fecha_sesion, posicion=pos)
+            mostrar[row_idx] = fila
 
         for row_idx, s in enumerate(proposal.slots):
-            ea, eb = s.ejercicio_a, s.ejercicio_b
-            cambios = edited_cells.get(row_idx, {})
+            ea, eb = mostrar[row_idx]["A"], mostrar[row_idx]["B"]
             titulo = " + ".join(
                 filter(None, [exercise_label(ea.nombre, ea.rol) if ea else "", exercise_label(eb.nombre, eb.rol) if eb else ""])
             )
             with st.expander(f"Ejercicio {s.slot} — {titulo}", expanded=True):
-                if ea and "ejercicio_a" not in cambios:
+                if ea:
                     st.info(f"**A ({ROL_LABEL.get(ea.rol, ea.rol) or 'sin clasificar'}):** {render_banner_compacto(ea)}")
-                if eb and eb.nombre and "ejercicio_b" not in cambios:
+                if eb and eb.nombre:
                     st.info(f"**B ({ROL_LABEL.get(eb.rol, eb.rol) or 'sin clasificar'}):** {render_banner_compacto(eb)}")
 
         opciones_ejercicio = sorted(

@@ -18,6 +18,7 @@ class ExerciseProposal:
     tipo_ajuste: str  # PRIMERA_VEZ | SUBE_REPS | RESET_REPS_SUBE_KG
     reps_anterior: str
     carga_anterior: str
+    ultima_vez: str = ""  # fecha (texto) de la ultima vez que se hizo este ejercicio, "" si nunca
 
 
 @dataclass

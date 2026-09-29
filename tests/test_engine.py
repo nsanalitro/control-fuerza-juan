@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.engine import build_proposal, suggest_carga  # noqa: E402
+from src.engine import build_proposal, compute_progression_for_exercise, suggest_carga  # noqa: E402
 from src.models import PRIMERA_VEZ, RESET_REPS_SUBE_KG, SUBE_REPS  # noqa: E402
 from src.parser import SetSlot  # noqa: E402
 
@@ -142,3 +142,48 @@ def test_continuidad_se_corta_si_cambia_el_ejercicio_en_medio():
     assert slot1.ejercicio_a.nombre == "PRESS MILITAR"
     assert slot1.ejercicio_a.week_index == 2
     assert slot1.ejercicio_a.reps == "10"  # 8 + 2 (troncal)
+
+
+def test_ejercicio_editado_a_uno_nunca_hecho_no_hereda_carga_del_anterior():
+    # Caso real reportado: 15A viene con SENTADILLA TRASERA progresando a
+    # 25kg. Juan la cambia a mano por SENTADILLA UNIPODAL, que nunca se hizo
+    # para esta categoria -- no puede heredar los 25kg (unilateral, mas
+    # exigente), tiene que arrancar sin carga de referencia.
+    historial = [
+        make_slot("MICRO 8", "17/02/2026", "15A", "T. INF.", 1, "SENTADILLA TRASERA", "20kg", "10", "-", "-", "-", "5"),
+        make_slot("MICRO 9", "24/02/2026", "15A", "T. INF.", 1, "SENTADILLA TRASERA", "20kg", "12", "-", "-", "-", "5"),
+    ]
+    hoy = date(2026, 3, 3)
+    ep = compute_progression_for_exercise(historial, "SENTADILLA UNIPODAL", hoy, posicion="A")
+    assert ep.tipo_ajuste == PRIMERA_VEZ
+    assert ep.carga == "-"
+    assert ep.reps == ""
+    assert ep.ultima_vez == ""  # nunca se hizo, no solo "distinto dia"
+
+
+def test_ejercicio_editado_a_uno_ya_hecho_antes_muestra_cuando_fue():
+    historial = [
+        make_slot("MICRO 3", "10/02/2026", "15A", "T. INF.", 3, "SENTADILLA UNIPODAL", "12.5kg", "8", "-", "-", "-", "5"),
+    ]
+    hoy = date(2026, 3, 3)  # mismo dia de semana (martes) que 10/02/2026, pero no consecutivo
+    ep = compute_progression_for_exercise(historial, "SENTADILLA UNIPODAL", hoy, posicion="A")
+    assert ep.tipo_ajuste == PRIMERA_VEZ
+    assert ep.ultima_vez == "10/02/2026"
+    assert ep.carga == "12.5kg"
+    assert ep.reps == "8"
+
+
+def test_progresion_sigue_al_ejercicio_aunque_cambie_de_slot():
+    # PRESS MILITAR estuvo en el slot 1 la primera semana y en el slot 3 la
+    # segunda (p.ej. Juan reordeno la sesion) -- la progresion tiene que
+    # seguir contando semana 3, no resetear por el cambio de slot.
+    historial = [
+        make_slot("MICRO 8", "17/02/2026", "14A", "T. INF.", 1, "PRESS MILITAR", "15kg", "8", "-", "-", "-", "5"),
+        make_slot("MICRO 9", "24/02/2026", "14A", "T. INF.", 3, "-", "-", "-", "PRESS MILITAR", "15kg", "10", "5"),
+    ]
+    hoy = date(2026, 3, 3)
+    ep = compute_progression_for_exercise(historial, "PRESS MILITAR", hoy, posicion="A")
+    assert ep.week_index == 3
+    assert ep.tipo_ajuste == RESET_REPS_SUBE_KG
+    assert ep.reps == "8"  # vuelve a la base
+    assert ep.carga == "17.5kg"  # sube desde 15kg
