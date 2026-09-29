@@ -198,7 +198,7 @@ def main() -> None:
             key="editor",
         )
 
-        horario = st.text_input("Horario de la sesión (opcional)", value="")
+        horario = next((hor for cat, hor in categorias_hoy if cat == categoria), "")
 
         if st.button("✅ Registrar esta sesión como ejecutada"):
             with st.spinner("Guardando sesión..."):
