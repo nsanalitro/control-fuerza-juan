@@ -8,6 +8,7 @@ import streamlit as st
 from src.data_source import append_sesion, load_historial_fuente, load_historial_registro
 from src.engine import build_proposal
 from src.models import SessionProposal
+from src.ui import inject_loading_overlay
 
 st.set_page_config(page_title="Control Fuerza - Juan", page_icon="🏋️", layout="centered")
 
@@ -40,6 +41,7 @@ def proposal_to_dataframe(proposal: SessionProposal) -> pd.DataFrame:
 
 
 def main() -> None:
+    inject_loading_overlay()
     st.title("🏋️ Control Fuerza — Juan")
     st.markdown("### ¡Hola Juan! ¿Cómo andás? ¿Qué planificamos hoy?")
 
@@ -116,15 +118,16 @@ def main() -> None:
             horario = st.text_input("Horario de la sesión (opcional)", value="")
 
             if st.button("✅ Registrar esta sesión como ejecutada"):
-                filas = edited.to_dict("records")
-                append_sesion(
-                    registro_id,
-                    fecha=fecha_sesion.strftime("%d/%m/%Y"),
-                    categoria=proposal.categoria,
-                    perfil_sesion=proposal.perfil_sesion,
-                    horario=horario,
-                    filas=filas,
-                )
+                with st.spinner("Guardando sesión..."):
+                    filas = edited.to_dict("records")
+                    append_sesion(
+                        registro_id,
+                        fecha=fecha_sesion.strftime("%d/%m/%Y"),
+                        categoria=proposal.categoria,
+                        perfil_sesion=proposal.perfil_sesion,
+                        horario=horario,
+                        filas=filas,
+                    )
                 st.success("Sesión registrada. La próxima propuesta para esta categoría ya la va a tener en cuenta.")
                 del st.session_state["proposal"]
 

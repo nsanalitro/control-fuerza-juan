@@ -51,7 +51,7 @@ def _load_dev_fixture(path: str) -> list[SetSlot]:
     return parse_sheet("MICRO DEV", rows)
 
 
-@st.cache_data(ttl=600, show_spinner="Leyendo historial de entrenamientos...")
+@st.cache_data(ttl=600, show_spinner=False)
 def load_historial_fuente(spreadsheet_ids: tuple[str, ...]) -> list[SetSlot]:
     """Lee y parsea todas las hojas "MICRO N" de las planillas de gimnasio
     indicadas (las hojas de catalogo/plantilla se ignoran automaticamente)."""
