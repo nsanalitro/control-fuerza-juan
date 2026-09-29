@@ -19,6 +19,7 @@ class ExerciseProposal:
     reps_anterior: str
     carga_anterior: str
     ultima_vez: str = ""  # fecha (texto) de la ultima vez que se hizo este ejercicio, "" si nunca
+    categoria_origen: str = ""  # si el dato viene de otra categoria (temporada anterior), cual
 
 
 @dataclass

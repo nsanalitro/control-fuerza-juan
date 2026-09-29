@@ -12,6 +12,7 @@ from src.fcf import proximo_partido
 from src.fcf_config import fcf_ids_de
 from src.models import PRIMERA_VEZ, SUBE_REPS, ExerciseProposal, SessionProposal, SlotProposal
 from src.schedule_parser import categorias_de_hoy
+from src.season_mapping import categorias_anteriores_de
 from src.ui import inject_loading_overlay
 
 EJERCICIOS_CONOCIDOS = sorted(EXERCISE_PATTERNS.keys())
@@ -70,7 +71,8 @@ def render_banner_compacto(e: ExerciseProposal, hoy: date) -> str:
             motivo = f"hace {gap} días (mismo día de semana, pero hace mucho) — se retoma como rutina nueva"
         else:
             motivo = f"cayó en {WEEKDAY_ES[ultima_fecha.weekday()]}, distinto al día de hoy — sin ajuste automático" if ultima_fecha else "día distinto, sin ajuste automático"
-        return f"última vez {e.ultima_vez} · {e.reps} reps · {e.carga} — {motivo}"
+        origen = f" (como {e.categoria_origen})" if e.categoria_origen else ""
+        return f"última vez{origen} {e.ultima_vez} · {e.reps} reps · {e.carga} — {motivo}"
 
     flecha_reps = "⬆️" if e.tipo_ajuste == SUBE_REPS else "⬇️"
     if e.carga_anterior and e.carga != e.carga_anterior:
@@ -171,8 +173,8 @@ def main() -> None:
 
         baseline_df = proposal_to_dataframe(proposal)
         edited_cells = get_edited_cells("editor")
-        cat_norm = normalize_name(categoria)
-        historial_categoria = [h for h in historial if normalize_name(h.categoria) == cat_norm]
+        categorias_pool = {normalize_name(categoria)} | {normalize_name(c) for c in categorias_anteriores_de(categoria)}
+        historial_categoria = [h for h in historial if normalize_name(h.categoria) in categorias_pool]
 
         # Si Juan cambio el ejercicio de una fila, recalculamos SU propia
         # progresion (no la del ejercicio que reemplazo): el cartel de abajo
@@ -187,7 +189,9 @@ def main() -> None:
             for pos, col_ej in (("A", "ejercicio_a"), ("B", "ejercicio_b")):
                 nuevo_nombre = cambios.get(col_ej)
                 if nuevo_nombre:
-                    fila[pos] = compute_progression_for_exercise(historial_categoria, nuevo_nombre, fecha_sesion, posicion=pos)
+                    fila[pos] = compute_progression_for_exercise(
+                        historial_categoria, nuevo_nombre, fecha_sesion, categoria_actual=categoria, posicion=pos
+                    )
             mostrar[row_idx] = fila
 
         for row_idx, s in enumerate(proposal.slots):

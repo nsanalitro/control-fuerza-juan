@@ -187,3 +187,31 @@ def test_progresion_sigue_al_ejercicio_aunque_cambie_de_slot():
     assert ep.tipo_ajuste == RESET_REPS_SUBE_KG
     assert ep.reps == "8"  # vuelve a la base
     assert ep.carga == "17.5kg"  # sube desde 15kg
+
+
+def test_categoria_nueva_temporada_usa_historial_de_la_anterior():
+    # Caso real: 16A esta temporada es la misma cohorte que 15A la temporada
+    # pasada. Si 16A todavia no tiene historial propio, la propuesta tiene
+    # que apoyarse en el de 15A, y avisar de donde sale el dato.
+    historial = [
+        make_slot("MICRO 40", "22/06/2026", "15A", "FULL BODY", 1, "SENTADILLA TRASERA", "25kg", "12", "SALTABILIDAD VERTICAL", "-", "12", "5"),
+    ]
+    proposal = build_proposal(historial, "16A", hoy=date(2026, 9, 29))
+    assert proposal.basado_en_sesiones == 1
+    slot1 = next(s for s in proposal.slots if s.slot == 1)
+    assert slot1.ejercicio_a.nombre == "SENTADILLA TRASERA"
+    assert slot1.ejercicio_a.tipo_ajuste == PRIMERA_VEZ
+    assert slot1.ejercicio_a.carga == "25kg"
+    assert slot1.ejercicio_a.categoria_origen == "15A"
+
+
+def test_categoria_sin_mapeo_no_mezcla_con_otras():
+    # 1EQM no tiene equivalente de temporada anterior: no debe traer nada de
+    # otra categoria aunque el nombre se parezca.
+    historial = [
+        make_slot("MICRO 8", "17/02/2026", "1EQF", "FULL BODY", 1, "SENTADILLA TRASERA", "40kg", "8", "-", "-", "-", "5"),
+    ]
+    proposal = build_proposal(historial, "1EQM", hoy=date(2026, 3, 3))
+    assert proposal.basado_en_sesiones == 0
+    assert proposal.slots == []
+    assert proposal.advertencias

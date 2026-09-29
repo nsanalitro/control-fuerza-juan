@@ -45,6 +45,7 @@ from src.models import (
     SlotProposal,
 )
 from src.parser import SetSlot
+from src.season_mapping import categorias_anteriores_de
 
 
 def parse_fecha(fecha: str) -> date_cls | None:
@@ -109,23 +110,30 @@ def _ultimo_ejercicio_de_slot(registros_slot: list[SetSlot], posicion: str) -> s
 
 
 def compute_progression_for_exercise(
-    historial_categoria: list[SetSlot],
+    historial_pool: list[SetSlot],
     nombre: str | None,
     hoy: date_cls,
+    categoria_actual: str = "",
     posicion: str = "",
 ) -> ExerciseProposal | None:
     """Progresion de UN ejercicio para esta categoria, buscando su historial
     en cualquier slot/posicion donde haya aparecido (no solo donde esta hoy).
-    `historial_categoria` ya tiene que venir filtrado a la categoria."""
+
+    `historial_pool` puede incluir registros de categorias equivalentes de
+    temporadas anteriores (ver season_mapping.py) ademas de la categoria
+    actual -- por eso se recibe `categoria_actual`: sirve para detectar
+    cuando el dato mas reciente en realidad viene de otra categoria, y
+    dejarlo marcado en `categoria_origen` para que quede claro en el cartel."""
     nombre = (nombre or "").strip()
     if not nombre:
         return None
 
     rol = classify_troncal_auxiliar(nombre) or ""
     nombre_norm = normalize_name(nombre)
+    cat_actual_norm = normalize_name(categoria_actual)
 
     instancias: list[tuple[SetSlot, str, str]] = []
-    for s in historial_categoria:
+    for s in historial_pool:
         if s.ejercicio_a and normalize_name(s.ejercicio_a) == nombre_norm:
             instancias.append((s, s.carga_a or "-", s.reps_a or ""))
         if s.ejercicio_b and normalize_name(s.ejercicio_b) == nombre_norm:
@@ -141,6 +149,9 @@ def compute_progression_for_exercise(
     ultimo_registro, ultima_carga, ultimas_reps = instancias[0]
     ultima_fecha = parse_fecha(ultimo_registro.fecha)
     ultima_vez = ultimo_registro.fecha
+    categoria_origen = (
+        "" if normalize_name(ultimo_registro.categoria) == cat_actual_norm else ultimo_registro.categoria
+    )
 
     dia_coincide = (
         ultima_fecha is not None
@@ -151,7 +162,8 @@ def compute_progression_for_exercise(
     if not dia_coincide:
         return ExerciseProposal(
             posicion=posicion, nombre=nombre, rol=rol, carga=ultima_carga, reps=ultimas_reps, week_index=1,
-            tipo_ajuste=PRIMERA_VEZ, reps_anterior=ultimas_reps, carga_anterior=ultima_carga, ultima_vez=ultima_vez,
+            tipo_ajuste=PRIMERA_VEZ, reps_anterior=ultimas_reps, carga_anterior=ultima_carga,
+            ultima_vez=ultima_vez, categoria_origen=categoria_origen,
         )
 
     streak = 1
@@ -178,20 +190,28 @@ def compute_progression_for_exercise(
         nueva_reps = str(reps_num + delta) if reps_num is not None else ultimas_reps
         return ExerciseProposal(
             posicion, nombre, rol, ultima_carga, nueva_reps, week_index,
-            SUBE_REPS, reps_anterior=ultimas_reps, carga_anterior=ultima_carga, ultima_vez=ultima_vez,
+            SUBE_REPS, reps_anterior=ultimas_reps, carga_anterior=ultima_carga,
+            ultima_vez=ultima_vez, categoria_origen=categoria_origen,
         )
 
     nueva_carga = suggest_carga(ultima_carga)
     return ExerciseProposal(
         posicion, nombre, rol, nueva_carga, baseline_reps, week_index,
-        RESET_REPS_SUBE_KG, reps_anterior=ultimas_reps, carga_anterior=ultima_carga, ultima_vez=ultima_vez,
+        RESET_REPS_SUBE_KG, reps_anterior=ultimas_reps, carga_anterior=ultima_carga,
+        ultima_vez=ultima_vez, categoria_origen=categoria_origen,
     )
 
 
 def build_proposal(historial: list[SetSlot], categoria: str, hoy: date_cls | None = None) -> SessionProposal:
     hoy = hoy or date_cls.today()
     cat_norm = normalize_name(categoria)
-    registros = [s for s in historial if normalize_name(s.categoria) == cat_norm]
+    # La categoria de este año puede ser la misma cohorte de jugadores que
+    # entrenaba el año pasado con otro nombre (ver season_mapping.py) -- se
+    # pool-ea su historial para no arrancar de cero apenas cambia la
+    # temporada. compute_progression_for_exercise se encarga de aclarar
+    # cuando un dato viene de la categoria anterior.
+    categorias_pool = {cat_norm} | {normalize_name(c) for c in categorias_anteriores_de(categoria)}
+    registros = [s for s in historial if normalize_name(s.categoria) in categorias_pool]
 
     if not registros:
         return SessionProposal(
@@ -226,8 +246,8 @@ def build_proposal(historial: list[SetSlot], categoria: str, hoy: date_cls | Non
 
         nombre_a = _ultimo_ejercicio_de_slot(registros_slot, "A")
         nombre_b = _ultimo_ejercicio_de_slot(registros_slot, "B")
-        ex_a = compute_progression_for_exercise(registros_ordenados, nombre_a, hoy, posicion="A")
-        ex_b = compute_progression_for_exercise(registros_ordenados, nombre_b, hoy, posicion="B")
+        ex_a = compute_progression_for_exercise(registros_ordenados, nombre_a, hoy, categoria_actual=categoria, posicion="A")
+        ex_b = compute_progression_for_exercise(registros_ordenados, nombre_b, hoy, categoria_actual=categoria, posicion="B")
         series = next((s.series for s in registros_slot if s.series), "")
 
         slots_out.append(SlotProposal(slot=slot_num, ejercicio_a=ex_a, ejercicio_b=ex_b, series=series))
