@@ -128,9 +128,14 @@ def parse_gym_schedule(rows: list[list[str]], reference_date: date_cls) -> list[
     return entries
 
 
-def categorias_de_hoy(entries: list[ScheduleEntry], hoy: date_cls) -> list[str]:
-    vistas: list[str] = []
+def categorias_de_hoy(entries: list[ScheduleEntry], hoy: date_cls) -> list[tuple[str, str]]:
+    """Categorias con gym hoy, como (categoria, horario), en el orden real de
+    los turnos del dia (18, 19, 20...) tal como aparecen en la planilla -- no
+    alfabetico, porque el orden de los turnos importa para Juan."""
+    vistas: list[tuple[str, str]] = []
+    categorias_ya_vistas: set[str] = set()
     for e in entries:
-        if e.fecha == hoy and e.categoria not in vistas:
-            vistas.append(e.categoria)
-    return sorted(vistas)
+        if e.fecha == hoy and e.categoria not in categorias_ya_vistas:
+            vistas.append((e.categoria, e.horario))
+            categorias_ya_vistas.add(e.categoria)
+    return vistas

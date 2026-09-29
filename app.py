@@ -18,6 +18,7 @@ st.set_page_config(page_title="Control Fuerza - Juan", page_icon="🏋️", layo
 
 WEEKDAY_ES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 ROL_LABEL = {"troncal": "troncal", "auxiliar": "auxiliar", "": ""}
+HORARIO_LABEL = {"18": "18hs", "19": "19hs", "20": "20:20"}
 
 
 def get_config() -> dict | None:
@@ -90,7 +91,7 @@ def main() -> None:
     fecha_sesion = st.date_input("Fecha", value=date.today())
     dia_nombre = WEEKDAY_ES[fecha_sesion.weekday()]
 
-    categorias_hoy: list[str] = []
+    categorias_hoy: list[tuple[str, str]] = []
     if config["gym_schedule_id"]:
         with st.spinner("Leyendo horario de gimnasio..."):
             try:
@@ -100,13 +101,14 @@ def main() -> None:
                 st.caption(f"No pude leer la planilla de horarios ({e}).")
 
     if categorias_hoy:
-        st.info(f"📅 **{dia_nombre} {fecha_sesion.strftime('%d/%m')}** tienen gym programado: {', '.join(categorias_hoy)}")
+        detalle = ", ".join(f"{cat} ({HORARIO_LABEL.get(hor, hor + 'hs')})" for cat, hor in categorias_hoy)
+        st.info(f"📅 **{dia_nombre} {fecha_sesion.strftime('%d/%m')}** tienen gym programado: {detalle}")
     elif config["gym_schedule_id"]:
         st.caption(f"No encontré categorías con gym programado para el {dia_nombre.lower()} {fecha_sesion.strftime('%d/%m')} en la planilla de horarios.")
 
     default_index = 0
     if categorias_hoy:
-        for cat in categorias_hoy:
+        for cat, _hor in categorias_hoy:
             if cat in categorias:
                 default_index = categorias.index(cat)
                 break

@@ -21,8 +21,15 @@ def test_parse_gym_schedule_resolves_real_calendar_dates():
 
 def test_categorias_de_hoy_matches_real_schedule():
     entries = parse_gym_schedule(GYM_SCHEDULE_ROWS, reference_date=date(2026, 9, 29))
-    assert categorias_de_hoy(entries, date(2026, 9, 29)) == ["14A", "15A"]
+    assert categorias_de_hoy(entries, date(2026, 9, 29)) == [("14A", "18"), ("15A", "19")]
     assert categorias_de_hoy(entries, date(2026, 10, 1)) == []
+
+
+def test_categorias_de_hoy_respeta_orden_de_turno_no_alfabetico():
+    # Miercoles del microciclo 5 (16/09): CAF a las 18, JAF a las 19, 1EQF a
+    # las 20 -- el orden alfabetico daria 1EQF, CAF, JAF, que es incorrecto.
+    entries = parse_gym_schedule(GYM_SCHEDULE_ROWS, reference_date=date(2026, 9, 29))
+    assert categorias_de_hoy(entries, date(2026, 9, 16)) == [("CAF", "18"), ("JAF", "19"), ("1EQF", "20")]
 
 
 def test_categorias_de_hoy_same_categoria_different_weekday_across_microciclos():
