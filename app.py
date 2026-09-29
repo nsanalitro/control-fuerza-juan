@@ -10,7 +10,7 @@ from src.data_source import append_sesion, load_gym_schedule, load_historial_fue
 from src.engine import build_proposal
 from src.fcf import proximo_partido
 from src.fcf_config import fcf_ids_de
-from src.models import SessionProposal, SlotProposal
+from src.models import PRIMERA_VEZ, SUBE_REPS, ExerciseProposal, SessionProposal, SlotProposal
 from src.schedule_parser import categorias_de_hoy
 from src.ui import inject_loading_overlay
 
@@ -58,6 +58,18 @@ def exercise_label(nombre: str, rol: str) -> str:
     if not nombre:
         return ""
     return f"{nombre} ({ROL_LABEL.get(rol, rol)})" if rol else nombre
+
+
+def render_banner_compacto(e: ExerciseProposal) -> str:
+    if e.tipo_ajuste == PRIMERA_VEZ:
+        return f"primera vez · {e.reps} reps · {e.carga}"
+
+    flecha_reps = "↑" if e.tipo_ajuste == SUBE_REPS else "↓"
+    if e.carga_anterior and e.carga != e.carga_anterior:
+        carga_txt = f"{e.carga_anterior} → {e.carga}"
+    else:
+        carga_txt = e.carga
+    return f"Semana {e.week_index} · reps {e.reps} {flecha_reps} · {carga_txt}"
 
 
 def get_edited_cells(editor_key: str) -> dict[int, dict]:
@@ -160,9 +172,9 @@ def main() -> None:
             )
             with st.expander(f"Ejercicio {s.slot} — {titulo}", expanded=True):
                 if ea and "ejercicio_a" not in cambios:
-                    st.info(f"**A ({ROL_LABEL.get(ea.rol, ea.rol) or 'sin clasificar'}):** {ea.banner}")
+                    st.info(f"**A ({ROL_LABEL.get(ea.rol, ea.rol) or 'sin clasificar'}):** {render_banner_compacto(ea)}")
                 if eb and eb.nombre and "ejercicio_b" not in cambios:
-                    st.info(f"**B ({ROL_LABEL.get(eb.rol, eb.rol) or 'sin clasificar'}):** {eb.banner}")
+                    st.info(f"**B ({ROL_LABEL.get(eb.rol, eb.rol) or 'sin clasificar'}):** {render_banner_compacto(eb)}")
 
         opciones_ejercicio = sorted(
             set(EJERCICIOS_CONOCIDOS) | set(baseline_df["ejercicio_a"]) | set(baseline_df["ejercicio_b"]) | {""}

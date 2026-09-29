@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+PRIMERA_VEZ = "primera_vez"
+SUBE_REPS = "sube_reps"
+RESET_REPS_SUBE_KG = "reset_reps_sube_kg"
+
 
 @dataclass
 class ExerciseProposal:
@@ -11,7 +15,9 @@ class ExerciseProposal:
     carga: str
     reps: str
     week_index: int
-    banner: str
+    tipo_ajuste: str  # PRIMERA_VEZ | SUBE_REPS | RESET_REPS_SUBE_KG
+    reps_anterior: str
+    carga_anterior: str
 
 
 @dataclass

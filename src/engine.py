@@ -28,7 +28,14 @@ from datetime import date as date_cls
 from datetime import datetime
 
 from src.catalog import TRONCAL, classify_troncal_auxiliar, normalize_name
-from src.models import ExerciseProposal, SessionProposal, SlotProposal
+from src.models import (
+    PRIMERA_VEZ,
+    RESET_REPS_SUBE_KG,
+    SUBE_REPS,
+    ExerciseProposal,
+    SessionProposal,
+    SlotProposal,
+)
 from src.parser import SetSlot
 
 
@@ -109,7 +116,9 @@ def _compute_exercise_progression(
             carga=ultima_carga,
             reps=ultimas_reps,
             week_index=1,
-            banner="Primera vez que se genera esta rutina (día distinto al de la última sesión, o sin historial previo en este día).",
+            tipo_ajuste=PRIMERA_VEZ,
+            reps_anterior=ultimas_reps,
+            carga_anterior=ultima_carga,
         )
 
     streak = 1
@@ -128,22 +137,16 @@ def _compute_exercise_progression(
     if week_index % 2 == 0:
         reps_num = _parse_reps(ultimas_reps)
         nueva_reps = str(reps_num + delta) if reps_num is not None else ultimas_reps
-        banner = (
-            f"Semana {week_index} de esta rutina: +{delta} rep{'s' if delta > 1 else ''} respecto a la "
-            f"última vez ({ultimas_reps} → {nueva_reps}), mismo kilaje."
+        return ExerciseProposal(
+            posicion, nombre, rol, ultima_carga, nueva_reps, week_index,
+            SUBE_REPS, reps_anterior=ultimas_reps, carga_anterior=ultima_carga,
         )
-        return ExerciseProposal(posicion, nombre, rol, ultima_carga, nueva_reps, week_index, banner)
 
     nueva_carga = suggest_carga(ultima_carga)
-    if nueva_carga != ultima_carga:
-        ajuste_carga = f"sube el kilaje de {ultima_carga} a {nueva_carga}"
-    else:
-        ajuste_carga = "sin carga de referencia para progresar (mantener o ajustar a criterio)"
-    banner = (
-        f"Semana {week_index} de esta rutina: repeticiones vuelven a la línea base de la semana 1 "
-        f"({baseline_reps}), {ajuste_carga}."
+    return ExerciseProposal(
+        posicion, nombre, rol, nueva_carga, baseline_reps, week_index,
+        RESET_REPS_SUBE_KG, reps_anterior=ultimas_reps, carga_anterior=ultima_carga,
     )
-    return ExerciseProposal(posicion, nombre, rol, nueva_carga, baseline_reps, week_index, banner)
 
 
 def build_proposal(historial: list[SetSlot], categoria: str, hoy: date_cls | None = None) -> SessionProposal:

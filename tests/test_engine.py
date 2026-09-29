@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.engine import build_proposal, suggest_carga  # noqa: E402
+from src.models import PRIMERA_VEZ, RESET_REPS_SUBE_KG, SUBE_REPS  # noqa: E402
 from src.parser import SetSlot  # noqa: E402
 
 
@@ -56,7 +57,7 @@ def test_primera_vez_cuando_no_hay_historial_previo():
     proposal = build_proposal(historial, "14A", hoy=date(2026, 3, 11))
     slot1 = next(s for s in proposal.slots if s.slot == 1)
     assert slot1.ejercicio_a.week_index == 1
-    assert "primera vez" in slot1.ejercicio_a.banner.lower()
+    assert slot1.ejercicio_a.tipo_ajuste == PRIMERA_VEZ
     assert slot1.ejercicio_a.nombre == "SENTADILLA TRASERA"
     assert slot1.ejercicio_a.carga == "20kg"  # sin ajuste
 
@@ -72,11 +73,14 @@ def test_semana_2_aumenta_reps_troncal_y_auxiliar_distinto():
 
     assert slot1.ejercicio_a.rol == "troncal"
     assert slot1.ejercicio_a.week_index == 2
+    assert slot1.ejercicio_a.tipo_ajuste == SUBE_REPS
     assert slot1.ejercicio_a.reps == "12"  # 10 + 2
+    assert slot1.ejercicio_a.reps_anterior == "10"
     assert slot1.ejercicio_a.carga == "20kg"  # sin cambio de kilaje
 
     assert slot1.ejercicio_b.rol == "auxiliar"
     assert slot1.ejercicio_b.week_index == 2
+    assert slot1.ejercicio_b.tipo_ajuste == SUBE_REPS
     assert slot1.ejercicio_b.reps == "13"  # 12 + 1
     assert slot1.ejercicio_b.carga == "5kg"
 
@@ -104,8 +108,9 @@ def test_semana_3_sin_carga_no_dice_sube_el_kilaje():
     proposal = build_proposal(historial, "14A", hoy=hoy)
     slot4 = next(s for s in proposal.slots if s.slot == 4)
     assert slot4.ejercicio_a.week_index == 3
+    assert slot4.ejercicio_a.tipo_ajuste == RESET_REPS_SUBE_KG
     assert slot4.ejercicio_a.carga == "-"
-    assert "sube el kilaje" not in slot4.ejercicio_a.banner.lower()
+    assert slot4.ejercicio_a.carga_anterior == "-"  # sin cambio real: nada que progresar
 
 
 def test_dia_distinto_rompe_continuidad_aunque_el_ejercicio_sea_el_mismo():
@@ -118,7 +123,7 @@ def test_dia_distinto_rompe_continuidad_aunque_el_ejercicio_sea_el_mismo():
     proposal = build_proposal(historial, "14A", hoy=hoy_jueves)
     slot2 = next(s for s in proposal.slots if s.slot == 2)
     assert slot2.ejercicio_a.week_index == 1
-    assert "primera vez" in slot2.ejercicio_a.banner.lower()
+    assert slot2.ejercicio_a.tipo_ajuste == PRIMERA_VEZ
     assert slot2.ejercicio_a.carga == "30kg"  # se mantiene, sin bump
 
 
