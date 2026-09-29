@@ -64,9 +64,9 @@ def render_banner_compacto(e: ExerciseProposal) -> str:
     if e.tipo_ajuste == PRIMERA_VEZ:
         return f"primera vez · {e.reps} reps · {e.carga}"
 
-    flecha_reps = "↑" if e.tipo_ajuste == SUBE_REPS else "↓"
+    flecha_reps = "⬆️" if e.tipo_ajuste == SUBE_REPS else "⬇️"
     if e.carga_anterior and e.carga != e.carga_anterior:
-        carga_txt = f"{e.carga_anterior} → {e.carga}"
+        carga_txt = f"{e.carga_anterior} ➡️ {e.carga}"
     else:
         carga_txt = e.carga
     return f"Semana {e.week_index} · reps {e.reps} {flecha_reps} · {carga_txt}"
