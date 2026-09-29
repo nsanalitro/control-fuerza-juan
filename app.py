@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 import streamlit as st
 
 from src.catalog import EXERCISE_PATTERNS
-from src.data_source import append_sesion, load_gym_schedule, load_historial_fuente, load_historial_registro
+from src.data_source import append_sesion, load_gym_schedule, load_historial_fuente, load_historial_registro, load_partidos_fcf
 from src.engine import build_proposal
+from src.fcf import proximo_partido
+from src.fcf_config import fcf_ids_de
 from src.models import SessionProposal, SlotProposal
 from src.schedule_parser import categorias_de_hoy
 from src.ui import inject_loading_overlay
@@ -114,6 +116,21 @@ def main() -> None:
                 break
 
     categoria = st.selectbox("¿Con qué categoría trabajamos hoy?", categorias, index=default_index)
+
+    fcf_ids = fcf_ids_de(categoria)
+    if fcf_ids:
+        with st.spinner("Consultando calendario de la federación..."):
+            partidos = load_partidos_fcf(fcf_ids["grup_id"], fcf_ids["team_id"])
+        proximo = proximo_partido(partidos, datetime.combine(fecha_sesion, datetime.min.time()))
+        if proximo:
+            condicion = "local" if proximo["local"] else "visitante"
+            lugar = f", en {proximo['campo']}" if proximo["campo"] else ""
+            st.info(
+                f"⚽ Próximo partido de **{categoria}**: vs **{proximo['rival']}** "
+                f"({condicion}) — {WEEKDAY_ES[proximo['fecha'].weekday()]} {proximo['fecha'].strftime('%d/%m %H:%M')}hs{lugar}"
+            )
+        else:
+            st.caption(f"No encontré próximo partido programado en la federación para {categoria}.")
 
     if st.button("Generar propuesta", type="primary"):
         st.session_state["proposal"] = build_proposal(historial, categoria, hoy=fecha_sesion)

@@ -12,6 +12,7 @@ from datetime import date, datetime
 import gspread
 import streamlit as st
 
+from src.fcf import partidos_del_equipo
 from src.parser import SetSlot, parse_sheet, should_skip_sheet
 from src.schedule_parser import ScheduleEntry, parse_gym_schedule
 
@@ -81,6 +82,13 @@ def load_gym_schedule(spreadsheet_id: str, sheet_name: str, reference_date: date
     ws = sh.worksheet(sheet_name)
     rows = ws.get_all_values()
     return parse_gym_schedule(rows, reference_date=reference_date)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_partidos_fcf(grup_id: str, team_id: str) -> list[dict]:
+    """Partidos de la temporada del equipo en fcf.cat. Lista vacia si la FCF
+    no responde -- no bloquea el resto de la app."""
+    return partidos_del_equipo(grup_id, team_id)
 
 
 def _ensure_registro_worksheet(spreadsheet_id: str) -> gspread.Worksheet:

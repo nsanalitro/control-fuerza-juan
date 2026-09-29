@@ -28,7 +28,12 @@ historial real de rutinas ya hechas.
 5. Cada ejercicio muestra un cartel explicando el ajuste aplicado. Si Juan
    edita el ejercicio a mano en la tabla, ese cartel desaparece (la
    continuidad ya no aplica para ese ejercicio).
-6. Cuando Juan confirma, la sesión ejecutada se guarda en un Google Sheet
+6. Al elegir la categoría, si tiene datos cargados (`src/fcf_config.py`),
+   muestra el próximo partido (rival, día/hora, local o visitante, cancha)
+   consultando en vivo la API de la Federació Catalana de Futbol. Si la
+   categoría no tiene ID de la FCF cargado, simplemente no muestra nada (no
+   rompe la app).
+7. Cuando Juan confirma, la sesión ejecutada se guarda en un Google Sheet
    propio de la app (`registro_sesiones`), que después alimenta las próximas
    propuestas.
 
@@ -43,6 +48,8 @@ src/parser.py             # Lee las hojas "MICRO N" del Sheet de gimnasio (histo
 src/schedule_parser.py    # Lee la planilla de horarios "GYM 26-27"
 src/catalog.py            # Catálogo de ~100 ejercicios, tageados por patrón y troncal/auxiliar
 src/engine.py             # Reglas de progresión semanal (reps/kilos) por ejercicio
+src/fcf.py                # Próximo partido vía la API de la Federació Catalana de Futbol
+src/fcf_config.py         # Mapeo categoria -> (grup_id, team_id) de la FCF
 src/data_source.py        # Conexión a Google Sheets (lectura y escritura)
 src/ui.py                 # Overlay de carga (vidrio esmerilado)
 tests/                    # Tests con datos reales de ejemplo
