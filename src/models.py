@@ -4,19 +4,22 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class ExerciseProposal:
+    posicion: str  # "A" | "B"
+    nombre: str
+    rol: str  # "troncal" | "auxiliar" | "" (patron desconocido)
+    carga: str
+    reps: str
+    week_index: int
+    banner: str
+
+
+@dataclass
 class SlotProposal:
     slot: int
-    ejercicio_a: str
-    carga_a_sugerida: str
-    carga_a_nota: str
-    reps_a_objetivo: str
-    ejercicio_b: str
-    carga_b_sugerida: str
-    carga_b_nota: str
-    reps_b_objetivo: str
-    series_objetivo: str
-    veces_en_historial: int
-    ultima_vez: str  # nombre del microciclo o "" si nunca se uso
+    ejercicio_a: ExerciseProposal | None
+    ejercicio_b: ExerciseProposal | None
+    series: str
 
 
 @dataclass

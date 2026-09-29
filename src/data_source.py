@@ -7,12 +7,13 @@ app puede leer/escribir sin que Juan tenga que loguearse con su cuenta.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 import gspread
 import streamlit as st
 
 from src.parser import SetSlot, parse_sheet, should_skip_sheet
+from src.schedule_parser import ScheduleEntry, parse_gym_schedule
 
 REGISTRO_WORKSHEET_NAME = "registro_sesiones"
 REGISTRO_HEADERS = [
@@ -68,6 +69,18 @@ def load_historial_fuente(spreadsheet_ids: tuple[str, ...]) -> list[SetSlot]:
             rows = ws.get_all_values()
             registros.extend(parse_sheet(ws.title, rows))
     return registros
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_gym_schedule(spreadsheet_id: str, sheet_name: str, reference_date: date) -> list[ScheduleEntry]:
+    """Lee la planilla de horarios (que categoria entrena gym que dia, por
+    microciclo) y la devuelve como lista de ScheduleEntry con fechas reales
+    ya resueltas."""
+    client = get_client()
+    sh = client.open_by_key(spreadsheet_id)
+    ws = sh.worksheet(sheet_name)
+    rows = ws.get_all_values()
+    return parse_gym_schedule(rows, reference_date=reference_date)
 
 
 def _ensure_registro_worksheet(spreadsheet_id: str) -> gspread.Worksheet:

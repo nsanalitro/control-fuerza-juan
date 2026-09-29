@@ -149,3 +149,42 @@ def exercises_by_pattern(pattern: str) -> list[str]:
 def is_known_exercise(name: str) -> bool:
     n = normalize_name(name)
     return n in EXERCISE_PATTERNS or n in NON_EXERCISE_ENTRIES
+
+
+# Clasificacion troncal/auxiliar (para la super serie): troncal = ejercicio
+# multiarticular con carga externa relevante; auxiliar = core, pliometria,
+# velocidad/agilidad, excentricos y accesorios. Se usa para decidir cuanto
+# sube cada uno en la progresion (+2 reps troncal, +1 auxiliar).
+TRONCAL_PATTERNS = {
+    PATTERN_SENTADILLA,
+    PATTERN_UNILATERAL,
+    PATTERN_BISAGRA,
+    PATTERN_EMPUJE_H,
+    PATTERN_EMPUJE_V,
+    PATTERN_TRACCION_H,
+    PATTERN_TRACCION_V,
+    PATTERN_OLIMPICO,
+}
+AUXILIAR_PATTERNS = {
+    PATTERN_CORE_FLEXION,
+    PATTERN_CORE_ROTACION,
+    PATTERN_CORE_ISOMETRICO,
+    PATTERN_PLIOMETRIA,
+    PATTERN_EXCENTRICO,
+    PATTERN_ACCESORIO,
+    PATTERN_VELOCIDAD,
+    PATTERN_AGILIDAD,
+    PATTERN_POTENCIA,
+}
+
+TRONCAL = "troncal"
+AUXILIAR = "auxiliar"
+
+
+def classify_troncal_auxiliar(exercise_name: str) -> str | None:
+    pattern = pattern_of(exercise_name)
+    if pattern in TRONCAL_PATTERNS:
+        return TRONCAL
+    if pattern in AUXILIAR_PATTERNS:
+        return AUXILIAR
+    return None

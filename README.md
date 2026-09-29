@@ -6,17 +6,29 @@ historial real de rutinas ya hechas.
 
 ## Qué hace
 
-1. Juan elige una categoría.
-2. La app lee el historial de sesiones de gimnasio (Google Sheets) de esa
-   categoría: qué perfil de sesión usó últimamente (tren inferior / tren
-   superior / full body), qué parejas de ejercicios viene rotando y con qué
-   carga.
-3. Propone la sesión de hoy: reutiliza las parejas de ejercicios que ya
-   estaban programadas (no inventa ejercicios ni combinaciones nuevas),
-   rotando para no repetir siempre lo mismo, y sugiere una progresión de
-   carga conservadora (+5%, redondeada a 2.5kg) solo cuando el dato anterior
-   es un peso claro en kg. Todo queda editable antes de confirmar.
-4. Cuando Juan confirma, la sesión ejecutada se guarda en un Google Sheet
+1. Arriba de todo, muestra qué categorías tienen gym programado hoy según la
+   planilla de horarios ("GYM 26-27").
+2. Juan elige una categoría (por defecto, una de las que le tocan hoy).
+3. La app arma la propuesta de hoy repitiendo, para cada uno de los 4
+   ejercicios, el mismo que se usó la última vez para esa categoría (no
+   inventa ejercicios ni combinaciones nuevas — la variedad la decide Juan
+   editando a mano cuando quiere cambiar algo).
+4. Ajusta reps y kilos según una progresión ondulante semana a semana, pero
+   **solo si el día de la semana coincide** con el de la última vez que se
+   hizo esa rutina (si la categoría cambió de día, se trata como rutina
+   nueva, sin ajuste):
+   - Semana par (2, 4, 6...): +2 reps si el ejercicio es troncal, +1 si es
+     auxiliar (según el patrón de movimiento, `src/catalog.py`), mismo
+     kilaje.
+   - Semana impar ≥ 3 (3, 5, 7...): las reps vuelven a la línea base de la
+     semana 1, y sube el kilaje (+5%, redondeado a 2.5kg) — solo si la carga
+     anterior es un peso claro en kg.
+   - Este seguimiento es por ejercicio individual, no por pareja: si solo
+     cambia el auxiliar, el troncal sigue su propia progresión sin cortarse.
+5. Cada ejercicio muestra un cartel explicando el ajuste aplicado. Si Juan
+   edita el ejercicio a mano en la tabla, ese cartel desaparece (la
+   continuidad ya no aplica para ese ejercicio).
+6. Cuando Juan confirma, la sesión ejecutada se guarda en un Google Sheet
    propio de la app (`registro_sesiones`), que después alimenta las próximas
    propuestas.
 
@@ -26,12 +38,14 @@ No usa IA generativa para decidir la propuesta: es lógica de reglas explícita
 ## Estructura
 
 ```
-app.py                  # UI de Streamlit
-src/parser.py           # Lee las hojas "MICRO N" del Sheet de gimnasio
-src/catalog.py          # Catálogo de ~100 ejercicios, tageados por patrón
-src/engine.py           # Reglas de rotación + progresión de carga
-src/data_source.py      # Conexión a Google Sheets (lectura y escritura)
-tests/                  # Tests con datos reales de ejemplo
+app.py                    # UI de Streamlit
+src/parser.py             # Lee las hojas "MICRO N" del Sheet de gimnasio (historial)
+src/schedule_parser.py    # Lee la planilla de horarios "GYM 26-27"
+src/catalog.py            # Catálogo de ~100 ejercicios, tageados por patrón y troncal/auxiliar
+src/engine.py             # Reglas de progresión semanal (reps/kilos) por ejercicio
+src/data_source.py        # Conexión a Google Sheets (lectura y escritura)
+src/ui.py                 # Overlay de carga (vidrio esmerilado)
+tests/                    # Tests con datos reales de ejemplo
 ```
 
 ## Puesta en marcha (una sola vez)
@@ -73,9 +87,12 @@ loguearse con ninguna cuenta.
   su propia pestaña nueva `registro_sesiones` la primera vez que Juan
   confirme una sesión — nunca toca las pestañas "MICRO N" que se llenan a
   mano.
+- Abrí **GYM 26-27** (la planilla de horarios, hoja "GYM") → Compartir →
+  pegá el email de la cuenta de servicio → permiso **Lector** (solo hace
+  falta leerla, para el cartel de "a quién le toca hoy").
 
-No hace falta crear ningún Google Sheet nuevo: todo queda dentro de la
-planilla de la temporada actual.
+No hace falta crear ningún Google Sheet nuevo: todo queda dentro de las
+planillas que ya existen.
 
 ### 3. Cargar los secretos
 
@@ -124,4 +141,5 @@ sin necesidad de conexión a Google Sheets.
 - Ejercicios de fuerza fuera del gimnasio.
 - Sustituir automáticamente un ejercicio por otro del mismo patrón de
   movimiento cuando una categoría tiene muy poco historial propio (ya está el
-  catálogo tageado en `src/catalog.py`, falta usarlo en el motor).
+  catálogo tageado en `src/catalog.py` con patrón y rol troncal/auxiliar,
+  falta usarlo como fallback en el motor).

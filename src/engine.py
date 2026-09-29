@@ -1,26 +1,38 @@
 """Motor de propuesta de sesion (reglas explicitas, sin LLM).
 
-Filosofia: esta app no inventa metodologia de entrenamiento. Reutiliza las
-parejas de ejercicios que Juan/Nico ya programaron para cada categoria y
-perfil de sesion, rota entre ellas para dar variedad, y sugiere una
-progresion de carga conservadora (+5%, redondeada a 2.5kg) SOLO cuando la
-carga anterior es un peso claro en kg. Todo lo demas (tiempos isometricos,
-"-", pesos corporales) se deja igual y marcado para que Juan lo ajuste segun
-como responda el jugador ese dia — la app no tiene forma de saber el RIR/RPE
-real de la sesion anterior.
+Por defecto, cada ejercicio se propone IGUAL al que se uso la ultima vez
+para esa categoria/ejercicio/lado (A o B) -- ya no rota automaticamente para
+dar variedad, porque eso rompia el seguimiento semana a semana que describe
+esta funcion. La variedad la decide Juan a mano, editando el ejercicio en la
+tabla; en cuanto lo hace, esa continuidad se corta (se trata como "primera
+vez" la proxima vez).
+
+Esquema de progresion (por cada ejercicio individual, troncal o auxiliar,
+de forma independiente entre si):
+- Se compara contra la ULTIMA sesion registrada para esa categoria+ejercicio.
+- Si el dia de la semana de hoy no coincide con el de esa ultima sesion (la
+  categoria cambio de dia), se trata como rutina nueva: mismo ejercicio y
+  carga que la ultima vez, sin ajuste, con aviso de "primera vez".
+- Si el dia coincide, se cuenta cuantas veces seguidas (mismo dia de semana,
+  mismo ejercicio) se viene sosteniendo, para saber la "semana" del ciclo:
+    * semana par (2, 4, 6...): +2 reps si es troncal, +1 si es auxiliar,
+      mismo kilaje que la ultima vez.
+    * semana impar >= 3 (3, 5, 7...): las repeticiones vuelven a la linea
+      base de la semana 1 de esa racha, y sube el kilaje (+5%, redondeado a
+      2.5kg) sobre el ultimo kilaje usado.
 """
 from __future__ import annotations
 
-from collections import Counter
-from datetime import datetime
 import re
+from datetime import date as date_cls
+from datetime import datetime
 
-from src.catalog import normalize_name
-from src.models import SessionProposal, SlotProposal
+from src.catalog import TRONCAL, classify_troncal_auxiliar, normalize_name
+from src.models import ExerciseProposal, SessionProposal, SlotProposal
 from src.parser import SetSlot
 
 
-def parse_fecha(fecha: str):
+def parse_fecha(fecha: str) -> date_cls | None:
     fecha = (fecha or "").strip()
     for fmt in ("%d/%m/%Y", "%d/%m/%y"):
         try:
@@ -30,49 +42,112 @@ def parse_fecha(fecha: str):
     return None
 
 
-def source_order_key(slot: SetSlot):
-    """Orden cronologico aproximado: primero por fecha real (mas confiable
-    entre temporadas), y si falta, por el numero de microciclo como
-    desempate dentro de la misma hoja."""
+def _sort_key(slot: SetSlot):
     fecha = parse_fecha(slot.fecha)
     micro_match = re.search(r"(\d+)", slot.microciclo)
     micro_num = int(micro_match.group(1)) if micro_match else 0
-    return (fecha or datetime.min.date(), micro_num)
+    return (fecha or date_cls.min, micro_num)
 
 
 _CARGA_KG_RE = re.compile(r"^(\d+(?:[.,]\d+)?)\s*kg$", re.IGNORECASE)
-_CARGA_TIME_RE = re.compile(r'^(\d+(?:[.,]\d+)?)\s*"$')
 
 
-def suggest_carga(ultima_carga: str) -> tuple[str, str]:
-    """A partir de la ultima carga registrada, devuelve (carga_sugerida, nota).
-    Solo propone progresion numerica cuando el dato anterior es un peso claro
-    en kg; para el resto, mantiene el valor y deja la decision a Juan."""
+def suggest_carga(ultima_carga: str) -> str:
+    """+5% sobre la ultima carga, redondeado a 2.5kg, solo si es un peso
+    claro en kg. Tiempos isometricos o "-" (peso corporal) se mantienen
+    igual: no hay forma de inferir progresion ahi sin inventar datos."""
     c = (ultima_carga or "").strip()
-    if not c or c == "-":
-        return "-", "sin carga registrada antes"
-
+    if not c:
+        return "-"
     m = _CARGA_KG_RE.match(c)
-    if m:
-        valor = float(m.group(1).replace(",", "."))
-        sugerido = round((valor * 1.05) / 2.5) * 2.5
-        if sugerido <= valor:
-            sugerido = valor + 2.5
-        return f"{sugerido:g}kg", f"progresion sugerida sobre {c} (última vez) — ajustar según cómo respondió"
-
-    m = _CARGA_TIME_RE.match(c)
-    if m:
-        return c, f"mantener {c} (última vez) — ajustar según técnica"
-
-    return c, f"mantener {c} (última vez)"
+    if not m:
+        return c
+    valor = float(m.group(1).replace(",", "."))
+    sugerido = round((valor * 1.05) / 2.5) * 2.5
+    if sugerido <= valor:
+        sugerido = valor + 2.5
+    return f"{sugerido:g}kg"
 
 
-def build_proposal(
-    historial: list[SetSlot],
-    categoria: str,
-    perfiles_recientes_n: int = 4,
-    rotacion_n: int = 3,
-) -> SessionProposal:
+def _parse_reps(reps: str | None) -> int | None:
+    reps = (reps or "").strip()
+    return int(reps) if reps.isdigit() else None
+
+
+def _compute_exercise_progression(
+    registros_slot: list[SetSlot],
+    posicion: str,
+    hoy: date_cls,
+) -> ExerciseProposal | None:
+    def nombre_de(s: SetSlot) -> str | None:
+        return s.ejercicio_a if posicion == "A" else s.ejercicio_b
+
+    def carga_de(s: SetSlot) -> str | None:
+        return s.carga_a if posicion == "A" else s.carga_b
+
+    def reps_de(s: SetSlot) -> str | None:
+        return s.reps_a if posicion == "A" else s.reps_b
+
+    registros = sorted((s for s in registros_slot if nombre_de(s)), key=_sort_key, reverse=True)
+    if not registros:
+        return None
+
+    ultimo = registros[0]
+    ultimo_fecha = parse_fecha(ultimo.fecha)
+    nombre = nombre_de(ultimo) or ""
+    rol = classify_troncal_auxiliar(nombre) or ""
+    ultima_carga = carga_de(ultimo) or "-"
+    ultimas_reps = reps_de(ultimo) or ""
+
+    dia_coincide = ultimo_fecha is not None and ultimo_fecha.weekday() == hoy.weekday()
+
+    if not dia_coincide:
+        return ExerciseProposal(
+            posicion=posicion,
+            nombre=nombre,
+            rol=rol,
+            carga=ultima_carga,
+            reps=ultimas_reps,
+            week_index=1,
+            banner="Primera vez que se genera esta rutina (día distinto al de la última sesión, o sin historial previo en este día).",
+        )
+
+    streak = 1
+    baseline_reps = ultimas_reps
+    for rec in registros[1:]:
+        rec_fecha = parse_fecha(rec.fecha)
+        if nombre_de(rec) == nombre and rec_fecha is not None and rec_fecha.weekday() == hoy.weekday():
+            streak += 1
+            baseline_reps = reps_de(rec) or baseline_reps
+        else:
+            break
+
+    week_index = streak + 1
+    delta = 2 if rol == TRONCAL else 1
+
+    if week_index % 2 == 0:
+        reps_num = _parse_reps(ultimas_reps)
+        nueva_reps = str(reps_num + delta) if reps_num is not None else ultimas_reps
+        banner = (
+            f"Semana {week_index} de esta rutina: +{delta} rep{'s' if delta > 1 else ''} respecto a la "
+            f"última vez ({ultimas_reps} → {nueva_reps}), mismo kilaje."
+        )
+        return ExerciseProposal(posicion, nombre, rol, ultima_carga, nueva_reps, week_index, banner)
+
+    nueva_carga = suggest_carga(ultima_carga)
+    if nueva_carga != ultima_carga:
+        ajuste_carga = f"sube el kilaje de {ultima_carga} a {nueva_carga}"
+    else:
+        ajuste_carga = "sin carga de referencia para progresar (mantener o ajustar a criterio)"
+    banner = (
+        f"Semana {week_index} de esta rutina: repeticiones vuelven a la línea base de la semana 1 "
+        f"({baseline_reps}), {ajuste_carga}."
+    )
+    return ExerciseProposal(posicion, nombre, rol, nueva_carga, baseline_reps, week_index, banner)
+
+
+def build_proposal(historial: list[SetSlot], categoria: str, hoy: date_cls | None = None) -> SessionProposal:
+    hoy = hoy or date_cls.today()
     cat_norm = normalize_name(categoria)
     registros = [s for s in historial if normalize_name(s.categoria) == cat_norm]
 
@@ -88,77 +163,30 @@ def build_proposal(
             ],
         )
 
-    registros_ordenados = sorted(registros, key=source_order_key, reverse=True)
+    registros_ordenados = sorted(registros, key=_sort_key, reverse=True)
 
     sesiones_vistas: list[tuple[str, str, str]] = []
-    perfiles_recientes: list[str] = []
-    vistos: set[tuple[str, str, str]] = set()
     for s in registros_ordenados:
         key = (s.microciclo, s.fecha, s.horario)
-        if key in vistos:
-            continue
-        vistos.add(key)
-        sesiones_vistas.append(key)
-        if s.perfil_sesion and len(perfiles_recientes) < perfiles_recientes_n:
-            perfiles_recientes.append(s.perfil_sesion)
+        if key not in sesiones_vistas:
+            sesiones_vistas.append(key)
+
+    perfil_propuesto = next((s.perfil_sesion for s in registros_ordenados if s.perfil_sesion), "")
 
     advertencias: list[str] = []
-    if perfiles_recientes:
-        perfil_propuesto = Counter(perfiles_recientes).most_common(1)[0][0]
-    else:
-        perfil_propuesto = ""
-        advertencias.append("No se encontró 'perfil de la sesión' en el historial reciente; elegí uno manualmente.")
-
     slots_out: list[SlotProposal] = []
-    for slot_num in (1, 2, 3, 4):
-        pool = [s for s in registros_ordenados if s.slot == slot_num and s.ejercicio_a and s.perfil_sesion == perfil_propuesto]
-        fallback_used = False
-        if not pool:
-            pool = [s for s in registros_ordenados if s.slot == slot_num and s.ejercicio_a]
-            fallback_used = True
 
-        if not pool:
+    for slot_num in (1, 2, 3, 4):
+        registros_slot = [s for s in registros_ordenados if s.slot == slot_num]
+        if not registros_slot:
             advertencias.append(f"Sin historial para el ejercicio {slot_num}; agregalo manualmente.")
             continue
 
-        pairing_last_seen: dict[tuple[str, str], SetSlot] = {}
-        pairing_count: Counter = Counter()
-        for s in pool:  # pool va de mas reciente a mas antiguo
-            key = (normalize_name(s.ejercicio_a), normalize_name(s.ejercicio_b or ""))
-            pairing_count[key] += 1
-            if key not in pairing_last_seen:
-                pairing_last_seen[key] = s
+        ex_a = _compute_exercise_progression(registros_slot, "A", hoy)
+        ex_b = _compute_exercise_progression(registros_slot, "B", hoy)
+        series = next((s.series for s in registros_slot if s.series), "")
 
-        parejas_recientes_orden = list(pairing_last_seen.keys())[: max(rotacion_n, 1)]
-        pareja_elegida = parejas_recientes_orden[-1]
-
-        ultimo_uso = pairing_last_seen[pareja_elegida]
-        carga_a_sug, nota_a = suggest_carga(ultimo_uso.carga_a or "")
-        carga_b_sug, nota_b = ("", "")
-        if ultimo_uso.ejercicio_b:
-            carga_b_sug, nota_b = suggest_carga(ultimo_uso.carga_b or "")
-
-        if fallback_used:
-            advertencias.append(
-                f"Ejercicio {slot_num}: no hay historial con perfil '{perfil_propuesto}', se usó el historial general de la categoría."
-            )
-
-        slots_out.append(
-            SlotProposal(
-                slot=slot_num,
-                ejercicio_a=ultimo_uso.ejercicio_a or "",
-                carga_a_sugerida=carga_a_sug,
-                carga_a_nota=nota_a,
-                reps_a_objetivo=ultimo_uso.reps_a or "",
-                ejercicio_b=ultimo_uso.ejercicio_b or "",
-                carga_b_sugerida=carga_b_sug,
-                carga_b_nota=nota_b,
-                reps_b_objetivo=ultimo_uso.reps_b or "",
-                series_objetivo=ultimo_uso.series or "",
-                veces_en_historial=pairing_count[pareja_elegida],
-                ultima_vez=ultimo_uso.microciclo,
-            )
-        )
+        slots_out.append(SlotProposal(slot=slot_num, ejercicio_a=ex_a, ejercicio_b=ex_b, series=series))
 
     return SessionProposal(
         categoria=categoria,
