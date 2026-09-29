@@ -143,9 +143,9 @@ def main() -> None:
             )
             with st.expander(f"Ejercicio {s.slot} — {titulo}", expanded=True):
                 if ea and "ejercicio_a" not in cambios:
-                    st.caption(f"**A ({ROL_LABEL.get(ea.rol, ea.rol) or 'sin clasificar'}):** {ea.banner}")
+                    st.info(f"**A ({ROL_LABEL.get(ea.rol, ea.rol) or 'sin clasificar'}):** {ea.banner}")
                 if eb and eb.nombre and "ejercicio_b" not in cambios:
-                    st.caption(f"**B ({ROL_LABEL.get(eb.rol, eb.rol) or 'sin clasificar'}):** {eb.banner}")
+                    st.info(f"**B ({ROL_LABEL.get(eb.rol, eb.rol) or 'sin clasificar'}):** {eb.banner}")
 
         opciones_ejercicio = sorted(
             set(EJERCICIOS_CONOCIDOS) | set(baseline_df["ejercicio_a"]) | set(baseline_df["ejercicio_b"]) | {""}
