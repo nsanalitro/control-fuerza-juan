@@ -7,7 +7,7 @@ import streamlit as st
 
 from src.catalog import EXERCISE_PATTERNS, normalize_name
 from src.data_source import append_sesion, load_gym_schedule, load_historial_fuente, load_historial_registro, load_partidos_fcf
-from src.engine import build_proposal, compute_progression_for_exercise
+from src.engine import build_proposal, compute_progression_for_exercise, parse_fecha
 from src.fcf import proximo_partido
 from src.fcf_config import fcf_ids_de
 from src.models import PRIMERA_VEZ, SUBE_REPS, ExerciseProposal, SessionProposal, SlotProposal
@@ -60,11 +60,17 @@ def exercise_label(nombre: str, rol: str) -> str:
     return f"{nombre} ({ROL_LABEL.get(rol, rol)})" if rol else nombre
 
 
-def render_banner_compacto(e: ExerciseProposal) -> str:
+def render_banner_compacto(e: ExerciseProposal, hoy: date) -> str:
     if e.tipo_ajuste == PRIMERA_VEZ:
         if not e.ultima_vez:
             return "nunca registrado antes para esta categoría · sin carga de referencia"
-        return f"última vez {e.ultima_vez} · {e.reps} reps · {e.carga} — día distinto, sin ajuste automático"
+        ultima_fecha = parse_fecha(e.ultima_vez)
+        if ultima_fecha is not None and ultima_fecha.weekday() == hoy.weekday():
+            gap = (hoy - ultima_fecha).days
+            motivo = f"hace {gap} días (mismo día de semana, pero hace mucho) — se retoma como rutina nueva"
+        else:
+            motivo = f"cayó en {WEEKDAY_ES[ultima_fecha.weekday()]}, distinto al día de hoy — sin ajuste automático" if ultima_fecha else "día distinto, sin ajuste automático"
+        return f"última vez {e.ultima_vez} · {e.reps} reps · {e.carga} — {motivo}"
 
     flecha_reps = "⬆️" if e.tipo_ajuste == SUBE_REPS else "⬇️"
     if e.carga_anterior and e.carga != e.carga_anterior:
@@ -191,9 +197,9 @@ def main() -> None:
             )
             with st.expander(f"Ejercicio {s.slot} — {titulo}", expanded=True):
                 if ea:
-                    st.info(f"**A ({ROL_LABEL.get(ea.rol, ea.rol) or 'sin clasificar'}):** {render_banner_compacto(ea)}")
+                    st.info(f"**A ({ROL_LABEL.get(ea.rol, ea.rol) or 'sin clasificar'}):** {render_banner_compacto(ea, fecha_sesion)}")
                 if eb and eb.nombre:
-                    st.info(f"**B ({ROL_LABEL.get(eb.rol, eb.rol) or 'sin clasificar'}):** {render_banner_compacto(eb)}")
+                    st.info(f"**B ({ROL_LABEL.get(eb.rol, eb.rol) or 'sin clasificar'}):** {render_banner_compacto(eb, fecha_sesion)}")
 
         opciones_ejercicio = sorted(
             set(EJERCICIOS_CONOCIDOS) | set(baseline_df["ejercicio_a"]) | set(baseline_df["ejercicio_b"]) | {""}
