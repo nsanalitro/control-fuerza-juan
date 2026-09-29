@@ -158,10 +158,10 @@ def main() -> None:
             use_container_width=True,
             column_config={
                 "slot": st.column_config.NumberColumn("N°", disabled=True, width="small"),
-                "ejercicio_a": st.column_config.SelectboxColumn("Ejercicio A", options=opciones_ejercicio),
+                "ejercicio_a": st.column_config.SelectboxColumn("Ejercicio A ▾", options=opciones_ejercicio),
                 "carga_a": st.column_config.TextColumn("Carga A"),
                 "reps_a": st.column_config.TextColumn("Reps A"),
-                "ejercicio_b": st.column_config.SelectboxColumn("Ejercicio B", options=opciones_ejercicio),
+                "ejercicio_b": st.column_config.SelectboxColumn("Ejercicio B ▾", options=opciones_ejercicio),
                 "carga_b": st.column_config.TextColumn("Carga B"),
                 "reps_b": st.column_config.TextColumn("Reps B"),
                 "series": st.column_config.TextColumn("Series"),
